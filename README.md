@@ -187,6 +187,55 @@ esquina-veiculos/
 
 ---
 
+## O que falta
+
+A tag `v1.0.0` (branch `main`) é a primeira versão. O trabalho seguinte fica em `desenvolvimento`.
+
+A arquitetura não muda: o navegador fala com o Nginx, que serve a vitrine React e encaminha `/api` para o core-api. O PostgreSQL, via Flyway, é a fonte dos veículos. A vitrine pública continua anônima. Cadastro, status e fotos ficam em rotas de funcionário. n8n e WAHA entram depois, chamando a mesma API. O pgvector fica de fora até existir uma busca que o filtro não cubra.
+
+Hoje a vitrine lê `mockVehicles.ts` e a API lê a tabela `veiculos`. As duas metades ainda não se falam.
+
+### Trava o uso
+
+| Peça | Hoje | Falta |
+|------|------|--------|
+| Catálogo | 50 veículos no mock, filtro e página de 12 no browser | `GET` paginado, filtros no servidor, vitrine sem mock |
+| Placa pública | `VeiculoResponseDTO` devolve a placa completa | DTO público com `placaMascarada` e `finalPlaca`; detalhe por UUID |
+| Erros | Placa duplicada e veículo ausente viram exceção genérica | `404`, `409`, `422` e `403` com corpo estável |
+| Contato | Botões de WhatsApp e telefone no modal não abrem nada | `wa.me` com o texto do veículo e o telefone da loja |
+| Acesso | `POST` e `PATCH` abertos, sem Spring Security | Login de funcionário; vitrine anônima |
+| Painel | Não há tela de cadastro nem de status | Formulário interno: veículo, preço, fotos e status |
+| Nginx | A imagem só entrega o `dist` | `try_files` da SPA e proxy `/api` para o core-api, no mesmo origem |
+| Postgres | Porta `5432` publicada na rede, senha no Compose | Bind em `127.0.0.1` e senha só por variável de ambiente |
+
+### Incompleto
+
+- A descrição do modal é texto fixo. O selo "Abaixo da FIPE" aparece para qualquer preço abaixo de R$ 100 mil, sem fonte de FIPE.
+- As abas da vitrine só mostram carro e moto. `BICICLETA` e `CAMINHAO` já existem no contrato.
+- `propulsao` é `String` no Java e enum no TypeScript. Os dois lados passam a usar `COMBUSTAO`, `ELETRICO`, `HIBRIDO` e `HUMANA`.
+- A placa é opcional e o índice único aceita vários nulos. No cadastro interno ela fica obrigatória, no formato antigo e no Mercosul.
+- Fotos continuam em `text[]`. Falta o upload: o arquivo vai para um volume e a URL entra nesse array.
+- `updateStatus` marca um TODO de auditoria, e a tabela `eventos_veiculo` não existe. A migração seguinte grava status anterior, status novo, origem e horário.
+- Não há OpenAPI, Actuator nem teste das regras de placa duplicada e de venda por IA. O teste atual só sobe o contexto.
+
+### Pode esperar
+
+n8n, WAHA e o `agent-service` (hoje um `sleep infinity`) esperam o cadastro humano. O agente, quando existir, usa o mesmo `PATCH` e continua sem poder marcar `VENDIDO` quando `X-Source` é `IA`.
+
+### Ordem
+
+1. Ligar vitrine e API: DTO público, paginação, filtro no repositório, erros HTTP, enum de propulsão, proxy no Nginx e a vitrine deixando o mock.
+2. A loja operar: login, painel, upload de foto, placa obrigatória, auditoria e Postgres preso ao localhost.
+3. Automação: n8n e WAHA em cima da API já pronta.
+
+### Contrato alvo
+
+`GET /api/v1/veiculos` devolve página, com `tipo`, `marca`, `modelo`, `precoMax`, `status`, `temLeilao`, `busca`, `page` e `size=12`. Cada item traz `placaMascarada` e `finalPlaca`. Placa completa, preço de compra e documento ficam fora desse JSON. O detalhe público é `GET /api/v1/veiculos/{id}`, por UUID.
+
+`POST` cria com status `DISPONIVEL` e placa validada. `PATCH` muda status. Essas rotas exigem sessão de funcionário. O header `X-Source: IA` continua bloqueado em `VENDIDO`.
+
+---
+
 ## Como executar
 
 ### Pré-requisitos
